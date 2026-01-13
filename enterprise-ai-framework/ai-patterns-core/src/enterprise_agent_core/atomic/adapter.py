@@ -19,6 +19,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
+from ..standards import beta
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class AtomicAgentResponse:
     status: str = "completed"
 
 
+@beta(since="0.1.5")
 class AzureAtomicAdapter:
     """Azure AI Foundry Agent adapter for atomic agent skills.
     

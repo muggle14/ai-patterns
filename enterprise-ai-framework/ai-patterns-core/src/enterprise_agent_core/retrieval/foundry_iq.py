@@ -17,10 +17,12 @@ from ..contracts.request import AgentRequest, AgentContext
 from ..contracts.planning import QueryPlan
 from ..contracts.retrieval import RetrievalResult
 from ..config import KnowledgeConfig
+from ..standards import preview_feature
 
 logger = logging.getLogger(__name__)
 
 
+@preview_feature(since="0.1.0")
 class FoundryIQRetriever:
     """Azure AI Foundry IQ Knowledge Base retriever.
 

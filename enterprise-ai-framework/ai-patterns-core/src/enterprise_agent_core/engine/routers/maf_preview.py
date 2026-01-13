@@ -23,11 +23,14 @@ from ...contracts.request import AgentRequest, AgentContext
 from ...interfaces.router import RouteDecision
 from ...config import AgentConfig, RetrieverMode
 from ..modes import LoopMode
+from ...standards import preview_feature
+
 
 logger = logging.getLogger(__name__)
 
 
 # Intent patterns with weights for classification
+
 _INTENT_PATTERNS = {
     "action": {
         "patterns": [
@@ -59,7 +62,8 @@ _INTENT_PATTERNS = {
 }
 
 
-class MAFRouter:
+@preview_feature(since="0.1.0", expected="0.2.0")
+class MAFRouter(IRouter):
     """Microsoft Agent Framework router (PREVIEW).
 
     Uses MAF for intelligent multi-agent routing when:

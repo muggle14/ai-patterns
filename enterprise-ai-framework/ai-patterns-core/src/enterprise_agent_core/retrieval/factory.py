@@ -120,8 +120,8 @@ class RetrieverFactory:
         elif retriever_type in ("confluence", "sharepoint"):
             # Future implementations - fall back to AI Search for now
             logger.warning(
-                f"Retriever type '{retriever_type}' not fully implemented, "
-                "falling back to AI Search"
+                f"[STUB] Retriever type '{retriever_type}' is a FUTURE/STUB feature. "
+                "Falling back to AI Search."
             )
             return AISearchDirectRetriever(
                 config=self.knowledge_config,
