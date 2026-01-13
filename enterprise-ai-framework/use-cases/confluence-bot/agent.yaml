@@ -1,0 +1,77 @@
+project:
+  name: confluence-bot
+  version: 1.0.0
+
+  # Azure AI Foundry connection
+  project_endpoint: ${PROJECT_ENDPOINT}
+  model_deployment: gpt-4o
+
+workflow:
+  # Mode must be project-configurable
+  default_mode: PLAN_RAG
+  allowed_modes: [FAST_RAG, PLAN_RAG, FULL_ACTOR_CRITIC]   # Confluence is read-only; no actions
+  router:
+    mode: classic                 # classic | maf
+    enable_maf: false
+    router_can_override: true     # router may select FAST for trivial queries
+
+  budget:
+    max_iterations: 2
+    max_latency_ms: 8000
+    max_prompt_tokens: 4000
+    max_output_tokens: 2000
+
+  planning:
+    enabled: true                 # enforced by mode anyway; useful override
+  critic:
+    enabled: false                # PLAN_RAG does not require critic; can enable later
+    confidence_threshold: 0.72
+
+retrieval:
+  enabled: true
+  type: ai_search                 # ai_search | foundry_iq | confluence_api
+
+  ai_search:
+    endpoint: ${SEARCH_ENDPOINT}
+    index_name: idx-confluence
+    semantic_config: semantic-confluence
+    default_top_k: 5
+    use_semantic_reranking: true
+    vector_field: contentVector       # make explicit (avoid hardcoding in code)
+    content_field: content
+    title_field: title
+    url_field: url
+    filters: {}                       # placeholder; optional
+    facets: []                        # optional
+
+  # Keep Foundry IQ/KB as a first-class option for later switch
+  foundry_iq:
+    kb_name: kb-confluence            # placeholder; depends on your Foundry setup
+    # endpoint/tool config would be resolved by PROJECT_ENDPOINT + connections
+
+guardrails:
+  pii_mode: detect                    # off | detect | redact
+  content_safety_mode: standard       # off | standard | strict
+
+tools:
+  enabled: false
+  allowlist: []
+  logic_apps: []                      # optional future expansion
+
+prompts:
+  pack: standard
+  standard_pack_version: v1
+  citation_required: true
+
+audit:
+  risk_tier: Tier2                    # placeholder
+  required_fields:
+    - correlation_id
+    - thread_id
+    - project_name
+    - agent_name
+    - response_mode
+    - retriever_type
+    - sources_used
+    - prompt_versions
+    - processing_time_ms

@@ -1,0 +1,113 @@
+project:
+  name: servicenow-bot
+  version: 1.0.0
+
+  # Azure AI Foundry connection
+  project_endpoint: ${PROJECT_ENDPOINT}
+  model_deployment: gpt-4o
+
+workflow:
+  default_mode: ACTION_GATED
+  allowed_modes: [PLAN_RAG, FULL_ACTOR_CRITIC, ACTION_GATED]   # keep safe; no FAST by default
+  router:
+    mode: classic                   # classic | maf
+    enable_maf: false
+    router_can_override: true       # may choose PLAN vs FULL depending on query
+
+  budget:
+    max_iterations: 2
+    max_latency_ms: 10000
+    max_prompt_tokens: 4000
+    max_output_tokens: 2000
+
+  planning:
+    enabled: true
+  critic:
+    enabled: true
+    confidence_threshold: 0.75      # stricter for actions
+
+retrieval:
+  enabled: true
+  type: ai_search                   # ai_search | foundry_iq
+
+  ai_search:
+    endpoint: ${SEARCH_ENDPOINT}
+    index_name: idx-servicenow
+    semantic_config: semantic-servicenow
+    default_top_k: 5
+    use_semantic_reranking: true
+    vector_field: contentVector
+    content_field: content
+    title_field: title
+    url_field: url
+    filters: {}                     # optional (e.g., kb_article=true)
+    facets: []                      # optional
+
+  foundry_iq:
+    kb_name: kb-servicenow          # placeholder for later migration
+
+guardrails:
+  pii_mode: redact                  # strictest posture for action bot
+  content_safety_mode: strict
+
+tools:
+  enabled: true
+  allowlist:
+    - servicenow.create_incident
+    - servicenow.update_incident
+    - servicenow.add_comment
+
+  approvals:
+    # project-level policy (engine must enforce)
+    default_required: true
+    allowlist_no_approval:
+      - servicenow.add_comment
+
+  idempotency:
+    enabled: true
+    strategy: "hash(thread_id, tool_name, payload.ticket_id?, payload)"   # engine generates key
+
+  execution:
+    default_timeout_ms: 30000
+    retries: 2
+    retry_backoff_ms: 500
+
+  logic_apps:
+    - name: servicenow.create_incident
+      endpoint_url: ${LOGIC_APP_CREATE_INCIDENT}
+      requires_approval: true
+      timeout_ms: 30000
+      schema_version: v1
+
+    - name: servicenow.update_incident
+      endpoint_url: ${LOGIC_APP_UPDATE_INCIDENT}
+      requires_approval: true
+      timeout_ms: 30000
+      schema_version: v1
+
+    - name: servicenow.add_comment
+      endpoint_url: ${LOGIC_APP_ADD_COMMENT}
+      requires_approval: false
+      timeout_ms: 15000
+      schema_version: v1
+
+prompts:
+  pack: standard
+  standard_pack_version: v1
+  citation_required: true
+  tool_payload_guard: v1            # prompt/ruleset to validate tool safety
+
+audit:
+  risk_tier: Tier3
+  required_fields:
+    - correlation_id
+    - thread_id
+    - project_name
+    - agent_name
+    - response_mode
+    - retriever_type
+    - sources_used
+    - tools_called
+    - approvals
+    - prompt_versions
+    - processing_time_ms

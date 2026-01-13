@@ -1,0 +1,202 @@
+name: Deploy Enterprise Agent
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      use_case:
+        description: 'Use case to deploy'
+        required: true
+        default: 'confluence-bot'
+        type: choice
+        options:
+          - confluence-bot
+          - sharepoint-bot
+          - servicenow-bot
+
+env:
+  REGISTRY: ${{ vars.ACR_REGISTRY }}
+  RESOURCE_GROUP: ${{ vars.RESOURCE_GROUP }}
+
+jobs:
+  # Run tests first
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          cd ai-patterns-core
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        run: |
+          cd ai-patterns-core
+          pytest tests/ -v --cov=src/enterprise_agent_core --cov-report=xml
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ai-patterns-core/coverage.xml
+          fail_ci_if_error: false
+
+  # Build and push Docker image
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name != 'pull_request'
+    outputs:
+      image_tag: ${{ steps.image_tag.outputs.tag }}
+      all_tags: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine use case and environment
+        id: config
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "use_case=${{ github.event.inputs.use_case }}" >> $GITHUB_OUTPUT
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          else
+            echo "use_case=confluence-bot" >> $GITHUB_OUTPUT
+            if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+              echo "environment=prod" >> $GITHUB_OUTPUT
+            else
+              echo "environment=dev" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ env.REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ steps.config.outputs.use_case }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Set primary image tag
+        id: image_tag
+        run: |
+          # Use sha-prefixed tag as primary for deploy
+          echo "tag=${{ env.REGISTRY }}/${{ steps.config.outputs.use_case }}:sha-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./use-cases/${{ steps.config.outputs.use_case }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_SHA=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            USE_CASE=${{ steps.config.outputs.use_case }}
+
+  # Deploy to Azure Container Apps
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name != 'pull_request'
+    environment:
+      name: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'dev') }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine deployment config
+        id: config
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "use_case=${{ github.event.inputs.use_case }}" >> $GITHUB_OUTPUT
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          else
+            echo "use_case=confluence-bot" >> $GITHUB_OUTPUT
+            if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+              echo "environment=prod" >> $GITHUB_OUTPUT
+            else
+              echo "environment=dev" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          resourceGroup: ${{ env.RESOURCE_GROUP }}
+          containerAppName: aca-${{ steps.config.outputs.use_case }}-${{ steps.config.outputs.environment }}
+          imageToDeploy: ${{ needs.build.outputs.image_tag }}
+          environmentVariables: |
+            PROJECT_ENDPOINT=secretref:project-endpoint
+            SEARCH_ENDPOINT=secretref:search-endpoint
+            ROUTER_MODE=classic
+            LOOP_MODE_DEFAULT=${{ steps.config.outputs.use_case == 'sharepoint-bot' && 'fast_rag' || (steps.config.outputs.use_case == 'servicenow-bot' && 'action_gated' || 'plan_rag') }}
+            PII_MODE=detect
+            CONTENT_SAFETY_MODE=standard
+            RISK_TIER=tier2
+
+      - name: Health check
+        run: |
+          APP_URL=$(az containerapp show \
+            --name aca-${{ steps.config.outputs.use_case }}-${{ steps.config.outputs.environment }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv)
+
+          echo "Checking health at https://$APP_URL/healthz"
+
+          for i in {1..10}; do
+            if curl -sf "https://$APP_URL/healthz" > /dev/null; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            echo "Attempt $i failed, waiting..."
+            sleep 10
+          done
+
+          echo "Health check failed after 10 attempts"
+          exit 1

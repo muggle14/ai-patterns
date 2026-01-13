@@ -1,0 +1,45 @@
+# SharePoint Bot Configuration
+# Default mode: FAST_RAG - direct document retrieval for speed
+
+name: sharepoint-bot
+version: 1.0.0
+
+# Azure AI Foundry connection
+project_endpoint: ${PROJECT_ENDPOINT}
+model_deployment: gpt-4o
+
+# Loop configuration - FAST_RAG for direct retrieval
+loop_mode: fast_rag
+risk_tier: tier2
+
+budget:
+  max_iterations: 1  # No critic loop in FAST_RAG
+  max_latency_ms: 5000  # Lower latency target
+  max_prompt_tokens: 4000
+  max_output_tokens: 2000
+
+# Knowledge retrieval - Azure AI Search for SharePoint docs
+knowledge:
+  enabled: true
+  mode: ai_search
+  search_endpoint: ${SEARCH_ENDPOINT}
+  index_name: idx-sharepoint
+  semantic_config: semantic-sharepoint
+  default_top_k: 5
+  use_semantic_reranking: true
+
+# Governance
+governance:
+  pii_mode: detect
+  content_safety_mode: standard
+
+# No tools for sharepoint-bot (read-only)
+tools_allowed: []
+logic_apps: []
+
+# Router configuration
+orchestrator_mode: classic
+enable_maf_router: false
+
+# Prompt pack
+prompt_pack: standard

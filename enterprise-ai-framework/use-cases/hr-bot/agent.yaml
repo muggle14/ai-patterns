@@ -1,0 +1,14 @@
+name: hr-bot
+version: 1.0.0
+project_connection_string: ${PROJECT_CONN_STR}
+orchestrator_mode: classic
+model_deployment: gpt-4o
+
+knowledge:
+  enabled: true
+  index_name: idx-hr-policies
+  search_endpoint: ${SEARCH_ENDPOINT}
+
+logic_apps:
+  - name: create_ticket
+    endpoint_url: ${LOGIC_APP_URL}

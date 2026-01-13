@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "enterprise_agent_core"
+version = "1.0.0"
+description = "Enterprise Async Agent Framework for Azure AI Foundry"
+requires-python = ">=3.10"
+dependencies = [
+    # Azure AI Foundry
+    "azure-ai-projects",
+    "azure-identity",
+    "azure-search-documents",
+
+    # Microsoft Agent Framework (preview)
+    "agent-framework>=0.1.0-preview",
+
+    # Observability
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+
+    # Data validation
+    "pydantic>=2.0",
+
+    # HTTP / Async
+    "aiohttp",
+    "tenacity",
+
+    # API
+    "fastapi>=0.100.0",
+    "uvicorn[standard]",
+
+    # Configuration
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio",
+    "pytest-cov",
+    "httpx",  # For FastAPI testing
+    "black",
+    "ruff",
+    "mypy",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true

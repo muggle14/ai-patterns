@@ -1,0 +1,6 @@
+# Local development requirements
+# Note: Docker builds install patterns core directly from copied directory
+# For local dev, run from repo root: pip install -e ai-patterns-core
+
+# Runtime dependencies
+uvicorn[standard]>=0.23.0
